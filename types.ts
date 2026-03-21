@@ -1,0 +1,55 @@
+/**
+ * NIM YX Auth - Type Definitions
+ *
+ * 用户只需配置 appId + appSecret，启动时自动获取凭证
+ */
+
+/**
+ * 用户配置的认证信息
+ */
+export interface NimAuthConfig {
+  /** 是否启用 */
+  enabled?: boolean;
+
+  /** 用户申请的 App ID */
+  appId: string;
+
+  /** 用户申请的密钥 */
+  appSecret: string;
+
+  /** Auth 接口地址（可选，不配则使用默认值） */
+  authUrl?: string;
+}
+
+/**
+ * 认证接口响应 - 服务端返回凭证和开关配置
+ */
+export interface AuthResponse {
+  code: number;
+  msg: string;
+  successCode: string;
+  currentTime: number;
+  data: {
+    // 核心凭证
+    appKey: string;
+    robotAccId: string;
+    robotToken: string;
+
+    // 权限开关
+    enableP2P?: boolean;     // 是否允许单聊
+    enableTeam?: boolean;    // 是否允许群聊
+    enableQChat?: boolean;   // 是否允许圈组
+  };
+}
+
+/**
+ * 获取到的完整配置（服务端完全控制）
+ */
+export interface FetchedConfig {
+  appKey: string;
+  account: string;   // robotAccId
+  token: string;     // robotToken
+  enableP2P: boolean;
+  enableTeam: boolean;
+  enableQChat: boolean;
+}
