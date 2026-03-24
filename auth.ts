@@ -12,7 +12,7 @@ import type { NimAuthConfig, AuthResponse, FetchedConfig } from "./types.js";
  * 
  * 部署时修改此默认值，用户也可以通过配置覆盖
  */
-const DEFAULT_AUTH_URL = "https://api.your-server.com";
+const DEFAULT_AUTH_URL = "https://api.yun.tilldream.com/api/im/im";
 
 /**
  * 从 Auth 接口获取 NIM 凭证和权限开关
@@ -25,13 +25,18 @@ export async function fetchNimConfig(
   // 优先使用配置的 authUrl，未配置则使用默认值
   const baseUrl = authUrl || DEFAULT_AUTH_URL;
 
-  const url = `${baseUrl}/im/openClaw/auth?appId=${encodeURIComponent(appId)}&appSecret=${encodeURIComponent(appSecret)}`;
+  const url = `${baseUrl}/openClaw/auth`;
 
   console.log(`[nim-yx-auth] Fetching config from: ${baseUrl}`);
 
+  // POST + JSON Body
   const response = await fetch(url, {
-    method: "GET",
-    headers: { "Accept": "application/json" },
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({ appId, appSecret }),
   });
 
   if (!response.ok) {
@@ -44,20 +49,20 @@ export async function fetchNimConfig(
     throw new Error(`Auth failed: ${data.msg} (code: ${data.code})`);
   }
 
-  const { appKey, robotAccId, robotToken } = data.data;
+  const { appKey, robotAccid, robotToken } = data.data;
 
-  if (!appKey || !robotAccId || !robotToken) {
+  if (!appKey || !robotAccid || !robotToken) {
     throw new Error("Invalid response: missing required fields");
   }
 
-  console.log(`[nim-yx-auth] Config fetched - account: ${robotAccId}`);
+  console.log(`[nim-yx-auth] Config fetched - account: ${robotAccid}`);
   console.log(`[nim-yx-auth] P2P: ${data.data.enableP2P ?? true ? 'ON' : 'OFF'}`);
   console.log(`[nim-yx-auth] Team: ${data.data.enableTeam ?? true ? 'ON' : 'OFF'}`);
   console.log(`[nim-yx-auth] QChat: ${data.data.enableQChat ?? false ? 'ON' : 'OFF'}`);
 
   return {
     appKey,
-    account: robotAccId,
+    account: robotAccid,
     token: robotToken,
     enableP2P: data.data.enableP2P ?? true,
     enableTeam: data.data.enableTeam ?? true,

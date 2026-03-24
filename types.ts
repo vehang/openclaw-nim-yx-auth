@@ -27,18 +27,19 @@ export interface NimAuthConfig {
 export interface AuthResponse {
   code: number;
   msg: string;
-  successCode: string;
   currentTime: number;
   data: {
     // 核心凭证
     appKey: string;
-    robotAccId: string;
+    robotAccid: string;    // 注意: API 返回的是 robotAccid
     robotToken: string;
 
     // 权限开关
     enableP2P?: boolean;     // 是否允许单聊
     enableTeam?: boolean;    // 是否允许群聊
     enableQChat?: boolean;   // 是否允许圈组
+    enableAddFriend?: boolean;
+    enableJoinTeam?: boolean;
   };
 }
 
