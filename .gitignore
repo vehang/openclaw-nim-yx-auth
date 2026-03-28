@@ -1,4 +1,6 @@
 node_modules/
 dist/
 *.log
-.DS_Store
+.DS_Store-e 
+# 打包文件
+*.tgz

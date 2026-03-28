@@ -10,15 +10,19 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "openclaw": ">=2026.1.29",
     "openclaw-nim": "^0.3.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.7.0",
-    "@types/node": "^22.0.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.1.29"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
   },
   "keywords": [
     "openclaw",

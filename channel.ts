@@ -2,7 +2,7 @@
  * NIM YX Auth Channel Plugin
  *
  * 云信 IM 安全认证插件
- * - 用户只配置 appId + appSecret
+ * - 支持两种认证方式：authToken 或 (appId + appSecret)
  * - authUrl 可配置，不配则使用默认值
  * - 服务端控制凭证和权限开关
  */
@@ -42,7 +42,8 @@ export const nimYxAuthPlugin: ChannelPlugin = {
         enabled: { type: "boolean" },
         appId: { type: "string" },
         appSecret: { type: "string" },
-        authUrl: { type: "string" },  // 可选
+        authToken: { type: "string" },  // 新增：Auth Token 认证
+        authUrl: { type: "string" },     // 可选
       },
     },
   },
@@ -68,7 +69,11 @@ export const nimYxAuthPlugin: ChannelPlugin = {
       const authConfig = getAuthConfig(ctx.cfg);
       if (!authConfig) throw new Error("[nim-yx-auth] Missing auth configuration");
 
-      ctx.log?.info(`[nim-yx-auth] Starting with appId: ${authConfig.appId}`);
+      // 日志显示使用的认证方式
+      const authMethod = authConfig.authToken 
+        ? `authToken: ${authConfig.authToken.substring(0, 8)}...` 
+        : `appId: ${authConfig.appId}`;
+      ctx.log?.info(`[nim-yx-auth] Starting with ${authMethod}`);
 
       // 调用 Auth 接口获取凭证和权限开关
       const config = await fetchNimConfig(authConfig);

@@ -1,7 +1,9 @@
 /**
  * NIM YX Auth - Type Definitions
  *
- * 用户只需配置 appId + appSecret，启动时自动获取凭证
+ * 支持两种认证方式：
+ * 1. appId + appSecret（原有方式）
+ * 2. authToken（新增方式）
  */
 
 /**
@@ -12,13 +14,19 @@ export interface NimAuthConfig {
   enabled?: boolean;
 
   /** 用户申请的 App ID */
-  appId: string;
+  appId?: string;
 
   /** 用户申请的密钥 */
-  appSecret: string;
+  appSecret?: string;
+
+  /** Auth Token（新增，优先使用） */
+  authToken?: string;
 
   /** Auth 接口地址（可选，不配则使用默认值） */
   authUrl?: string;
+
+  /** 昵称（可选） */
+  nickName?: string;
 }
 
 /**
