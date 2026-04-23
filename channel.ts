@@ -12,6 +12,7 @@ import type { ChannelPlugin, OpenClawConfig } from "openclaw/plugin-sdk";
 import { nimPlugin } from "openclaw-nim";
 import type { NimAuthConfig } from "./types.js";
 import { fetchNimConfig, validateAuthConfig } from "./auth.js";
+import { logger } from "./logger.js";
 
 /**
  * 默认 accountId（认证前使用，startAccount 中会被替换为实际值）
@@ -28,8 +29,15 @@ const meta = {
 
 function getAuthConfig(cfg: OpenClawConfig): NimAuthConfig | null {
   const nimCfg = cfg.channels?.nim as NimAuthConfig | undefined;
-  if (!nimCfg) return null;
-  if (validateAuthConfig(nimCfg)) return null;
+  if (!nimCfg) {
+    logger.warn("CONFIG", "channels.nim 配置不存在");
+    return null;
+  }
+  const err = validateAuthConfig(nimCfg);
+  if (err) {
+    logger.warn("CONFIG", "认证配置校验失败:", err);
+    return null;
+  }
   return nimCfg;
 }
 
@@ -53,14 +61,29 @@ export const nimYxAuthPlugin: ChannelPlugin = {
   },
 
   config: {
-    listAccountIds: () => [DEFAULT_ACCOUNT_ID],
-    resolveAccount: (cfg) => ({
-      accountId: DEFAULT_ACCOUNT_ID,
-      enabled: getAuthConfig(cfg)?.enabled ?? false,
-      configured: getAuthConfig(cfg) !== null,
-    }),
-    defaultAccountId: () => DEFAULT_ACCOUNT_ID,
-    isConfigured: (_account, cfg) => getAuthConfig(cfg) !== null,
+    listAccountIds: () => {
+      logger.info("CONFIG", "listAccountIds →", [DEFAULT_ACCOUNT_ID]);
+      return [DEFAULT_ACCOUNT_ID];
+    },
+    resolveAccount: (cfg) => {
+      const authConfig = getAuthConfig(cfg);
+      const result = {
+        accountId: DEFAULT_ACCOUNT_ID,
+        enabled: authConfig?.enabled ?? false,
+        configured: authConfig !== null,
+      };
+      logger.info("CONFIG", "resolveAccount →", result);
+      return result;
+    },
+    defaultAccountId: () => {
+      logger.info("CONFIG", "defaultAccountId →", DEFAULT_ACCOUNT_ID);
+      return DEFAULT_ACCOUNT_ID;
+    },
+    isConfigured: (_account, cfg) => {
+      const configured = getAuthConfig(cfg) !== null;
+      logger.info("CONFIG", `isConfigured → ${configured}`);
+      return configured;
+    },
   },
 
   security: nimPlugin.security,
@@ -70,28 +93,59 @@ export const nimYxAuthPlugin: ChannelPlugin = {
 
   gateway: {
     startAccount: async (ctx) => {
+      const STEPS = 8;
+      logger.step(1, STEPS, "startAccount 被调用");
+
+      // === Step 1: 读取认证配置 ===
       const authConfig = getAuthConfig(ctx.cfg);
-      if (!authConfig) throw new Error("[nim-yx-auth] Missing auth configuration");
+      if (!authConfig) {
+        const err = new Error("[nim-yx-auth] Missing auth configuration - 请检查 channels.nim 中的 authToken 或 appId/appSecret");
+        logger.error("START", err.message);
+        throw err;
+      }
+      logger.step(2, STEPS, "认证配置读取成功");
 
-      // 日志显示使用的认证方式
-      const authMethod = authConfig.authToken
-        ? `authToken: ${authConfig.authToken.substring(0, 8)}...`
-        : `appId: ${authConfig.appId}`;
-      ctx.log?.info(`[nim-yx-auth] Starting with ${authMethod}`);
+      // === Step 2: 显示认证方式 ===
+      if (authConfig.authToken) {
+        logger.info("START", `认证方式: authToken (${authConfig.authToken.substring(0, 8)}...)`);
+      } else {
+        logger.info("START", `认证方式: appId (${authConfig.appId})`);
+      }
+      if (authConfig.authUrl) {
+        logger.info("START", `Auth URL: ${authConfig.authUrl}`);
+      }
 
-      // 调用耘想 Auth 接口获取凭证和权限开关
-      const config = await fetchNimConfig(authConfig);
-      ctx.log?.info(`[nim-yx-auth] Config fetched - account: ${config.account}`);
+      // === Step 3: 调用耘想 Auth 接口 ===
+      logger.step(3, STEPS, "调用耘想 Auth 接口获取凭证...");
+      let fetchedConfig;
+      try {
+        fetchedConfig = await fetchNimConfig(authConfig);
+      } catch (err: any) {
+        logger.error("START", "Auth 接口调用失败:", err.message);
+        throw new Error(`[nim-yx-auth] Auth 接口调用失败: ${err.message}`);
+      }
 
-      // 根据开关设置权限策略
-      const p2pPolicy = config.enableP2P ? "open" : "disabled";
-      const teamPolicy = config.enableTeam ? "open" : "disabled";
-      const qchatPolicy = config.enableQChat ? "open" : "disabled";
+      logger.step(4, STEPS, `凭证获取成功 - account: ${fetchedConfig.account}, appKey: ${fetchedConfig.appKey}`);
 
-      ctx.log?.info(`[nim-yx-auth] P2P: ${p2pPolicy}, Team: ${teamPolicy}, QChat: ${qchatPolicy}`);
+      // === Step 4: 计算权限策略 ===
+      const p2pPolicy = fetchedConfig.enableP2P ? "open" : "disabled";
+      const teamPolicy = fetchedConfig.enableTeam ? "open" : "disabled";
+      const qchatPolicy = fetchedConfig.enableQChat ? "open" : "disabled";
+      logger.info("START", `权限策略 → P2P: ${p2pPolicy}, Team: ${teamPolicy}, QChat: ${qchatPolicy}`);
 
-      // 1.0.6+ multi-instance 格式：写入 instances[]
-      const accountId = `${config.appKey}:${config.account}`;
+      // === Step 5: 构建 instances 配置 ===
+      const accountId = `${fetchedConfig.appKey}:${fetchedConfig.account}`;
+      logger.step(5, STEPS, `构建 instances 配置, accountId: ${accountId}`);
+
+      const instanceConfig = {
+        enabled: true,
+        appKey: fetchedConfig.appKey,
+        account: fetchedConfig.account,
+        token: fetchedConfig.token.substring(0, 8) + "...",
+        p2p: { policy: p2pPolicy },
+        team: { policy: teamPolicy },
+        qchat: { policy: qchatPolicy },
+      };
 
       ctx.cfg = {
         ...ctx.cfg,
@@ -100,9 +154,9 @@ export const nimYxAuthPlugin: ChannelPlugin = {
           nim: {
             instances: [{
               enabled: true,
-              appKey: config.appKey,
-              account: config.account,
-              token: config.token,
+              appKey: fetchedConfig.appKey,
+              account: fetchedConfig.account,
+              token: fetchedConfig.token,
               p2p: { policy: p2pPolicy },
               team: { policy: teamPolicy },
               qchat: { policy: qchatPolicy },
@@ -111,11 +165,30 @@ export const nimYxAuthPlugin: ChannelPlugin = {
         },
       };
 
-      // 设置 accountId，让 1.0.6 的 startAccount 能正确解析实例
+      // === Step 6: 设置 accountId ===
       (ctx as any).accountId = accountId;
+      logger.step(6, STEPS, `ctx.accountId 已设置为: ${accountId}`);
 
-      // 委托 openclaw-nim 1.0.6 启动连接
-      return nimPlugin.gateway!.startAccount!(ctx);
+      // === Step 7: 委托 openclaw-nim 启动连接 ===
+      logger.step(7, STEPS, "委托 openclaw-nim 启动 NIM 连接...");
+      ctx.log?.info(`[nim-yx-auth] Delegating to openclaw-nim (accountId: ${accountId})`);
+
+      if (!nimPlugin.gateway?.startAccount) {
+        logger.error("START", "nimPlugin.gateway.startAccount 不存在！");
+        logger.error("START", "nimPlugin.gateway keys:", Object.keys(nimPlugin.gateway || {}));
+        throw new Error("[nim-yx-auth] nimPlugin.gateway.startAccount is not available");
+      }
+
+      try {
+        const result = await nimPlugin.gateway.startAccount(ctx);
+        logger.step(8, STEPS, "openclaw-nim 启动完成 ✅");
+        logger.info("START", "NIM YX Auth 插件启动成功 ✅");
+        return result;
+      } catch (err: any) {
+        logger.error("START", "openclaw-nim 启动失败:", err.message);
+        logger.error("START", "错误堆栈:", err.stack);
+        throw err;
+      }
     },
   },
 

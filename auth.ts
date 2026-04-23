@@ -9,10 +9,11 @@
  */
 
 import type { NimAuthConfig, AuthResponse, FetchedConfig } from "./types.js";
+import { logger } from "./logger.js";
 
 /**
  * 默认 Auth 接口地址
- * 
+ *
  * 部署时修改此默认值，用户也可以通过配置覆盖
  */
 const DEFAULT_AUTH_URL = "https://api.yun.tilldream.com/api/im";
@@ -27,69 +28,75 @@ export async function fetchNimConfig(
 
   // 优先使用配置的 authUrl，未配置则使用默认值
   const baseUrl = authUrl || DEFAULT_AUTH_URL;
-
   const url = `${baseUrl}/openClaw/auth`;
 
-  console.log(`[nim-yx-auth] Fetching config from: ${baseUrl}`);
+  logger.info("AUTH", `请求地址: ${url}`);
 
   // 构建请求参数 - 有什么值就带什么
   const requestBody: Record<string, string> = {};
-  
+
   if (authToken) {
     requestBody.authToken = authToken;
-    console.log(`[nim-yx-auth] Using authToken authentication`);
+    logger.info("AUTH", `认证方式: authToken (${authToken.substring(0, 8)}...)`);
   }
-  
+
   if (appId) {
     requestBody.appId = appId;
   }
-  
+
   if (appSecret) {
     requestBody.appSecret = appSecret;
   }
-  
-  if (nickName) {
-    requestBody.nickName = nickName;
-    console.log(`[nim-yx-auth] Using nickName: ${nickName}`);
+
+  if (appId && appSecret && !authToken) {
+    logger.info("AUTH", `认证方式: appId (${appId}) + appSecret`);
   }
 
-  // 判断使用哪种认证方式的日志
-  if (authToken) {
-    console.log(`[nim-yx-auth] Auth method: authToken`);
-  } else if (appId && appSecret) {
-    console.log(`[nim-yx-auth] Auth method: appId + appSecret`);
+  if (nickName) {
+    requestBody.nickName = nickName;
+    logger.info("AUTH", `昵称: ${nickName}`);
   }
+
+  logger.debug("AUTH", "请求参数:", Object.keys(requestBody));
 
   // POST + JSON Body
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Accept": "application/json",
+      Accept: "application/json",
     },
     body: JSON.stringify(requestBody),
   });
 
+  logger.info("AUTH", `HTTP 响应: ${response.status} ${response.statusText}`);
+
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const err = `HTTP ${response.status}: ${response.statusText}`;
+    logger.error("AUTH", `请求失败: ${err}`);
+    throw new Error(err);
   }
 
   const data: AuthResponse = await response.json();
+  logger.info("AUTH", `Auth 接口返回 code: ${data.code}, msg: ${data.msg}`);
 
   if (data.code !== 0) {
-    throw new Error(`Auth failed: ${data.msg} (code: ${data.code})`);
+    const err = `Auth failed: ${data.msg} (code: ${data.code})`;
+    logger.error("AUTH", err);
+    throw new Error(err);
   }
 
   const { appKey, robotAccid, robotToken } = data.data;
 
   if (!appKey || !robotAccid || !robotToken) {
-    throw new Error("Invalid response: missing required fields");
+    const err = "Invalid response: missing required fields (appKey/robotAccid/robotToken)";
+    logger.error("AUTH", err);
+    logger.error("AUTH", "响应数据:", data.data);
+    throw new Error(err);
   }
 
-  console.log(`[nim-yx-auth] Config fetched - account: ${robotAccid}`);
-  console.log(`[nim-yx-auth] P2P: ${data.data.enableP2P ?? true ? 'ON' : 'OFF'}`);
-  console.log(`[nim-yx-auth] Team: ${data.data.enableTeam ?? true ? 'ON' : 'OFF'}`);
-  console.log(`[nim-yx-auth] QChat: ${data.data.enableQChat ?? false ? 'ON' : 'OFF'}`);
+  logger.info("AUTH", `凭证获取成功: appKey=${appKey}, account=${robotAccid}, token=${robotToken.substring(0, 8)}...`);
+  logger.info("AUTH", `权限开关: P2P=${data.data.enableP2P ?? true}, Team=${data.data.enableTeam ?? true}, QChat=${data.data.enableQChat ?? false}`);
 
   return {
     appKey,
@@ -103,7 +110,7 @@ export async function fetchNimConfig(
 
 /**
  * 验证用户配置
- * 
+ *
  * 支持两种认证方式（二选一）：
  * 1. authToken
  * 2. appId + appSecret
@@ -111,22 +118,22 @@ export async function fetchNimConfig(
 export function validateAuthConfig(config: NimAuthConfig): string | null {
   // 方式1: 使用 authToken
   if (config.authToken) {
-    return null; // authToken 存在，验证通过
+    return null;
   }
-  
+
   // 方式2: 使用 appId + appSecret
   if (config.appId && config.appSecret) {
-    return null; // appId + appSecret 都存在，验证通过
+    return null;
   }
-  
+
   // 两种方式都没有满足
   if (!config.appId && !config.authToken) {
     return "appId or authToken is required";
   }
-  
+
   if (config.appId && !config.appSecret) {
     return "appSecret is required when using appId";
   }
-  
+
   return "Invalid configuration: provide either authToken or (appId + appSecret)";
 }
