@@ -10,10 +10,10 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "openclaw-nim": "^0.3.0"
+    "openclaw-nim": "^1.0.6"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.1.29"
+    "openclaw": ">=2026.3.31"
   },
   "peerDependenciesMeta": {
     "openclaw": {
